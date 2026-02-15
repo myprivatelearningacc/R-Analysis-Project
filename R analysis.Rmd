@@ -1,0 +1,524 @@
+---
+title: "R Analysis Project"
+author: "Nguyen Khanh Ngoc"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(stringr)
+library(knitr)
+library(lubridate)
+library(ggplot2)
+```
+
+
+Data retrieving:
+- Import and read the dataset, then merge the tables together, such that from 6 tables we will have 3 huge tables.
+- Lowercase names of the columns for easy formatting
+- Print out head of 3 tables
+
+
+```{r cars}
+# Read datasets
+patientsPG1 <-read.csv("patientsPG1.csv") %>% mutate(source = "PG1")
+patientsPG2 <-read.csv("patientsPG2.csv") %>% mutate(source = "PG2")
+
+encountersPG1 <- read.csv("encountersPG1.csv") %>% mutate(source = "PG1")
+encountersPG2 <- read.csv("encountersPG2.csv") %>% mutate(source = "PG2")
+
+conditionsPG1 <- read.csv("conditionsPG1.csv") %>% mutate(source = "PG1")
+conditionsPG2 <- read.csv("conditionsPG2.csv") %>% mutate(source = "PG2")
+
+# Merge (row bind)
+patients <- bind_rows(patientsPG1, patientsPG2)
+encounters <- bind_rows(encountersPG1, encountersPG2)
+conditions <- bind_rows(conditionsPG1, conditionsPG2)
+
+```
+
+
+```{r}
+names(patients)   <- tolower(names(patients))
+names(conditions) <- tolower(names(conditions))
+names(encounters) <- tolower(names(encounters))
+
+names(patientsPG1)   <- tolower(names(patientsPG1))
+names(conditionsPG1) <- tolower(names(conditionsPG1))
+names(encountersPG1) <- tolower(names(encountersPG1))
+
+names(patientsPG2)   <- tolower(names(patientsPG2))
+names(conditionsPG2) <- tolower(names(conditionsPG2))
+names(encountersPG2) <- tolower(names(encountersPG2))
+```
+
+```{r}
+nrow(patients)
+head(patients)
+```
+
+```{r}
+nrow(conditions)
+head(conditions)
+```
+
+
+```{r}
+head(encounters)
+nrow(encounters)
+
+```
+Question 1: Identifying COVID-19 Patients
+
+Explanation of the task:
+This task focuses on identifying patients who have been diagnosed with or are suspected of having COVID-19, based on their medical condition records.
+
+The analysis will:
+- Detect all records in the conditions dataset where the description field contains the keyword “COVID”.
+- Extract a distinct list of patient IDs associated with those COVID-related conditions.
+- Summarize the total number of unique COVID patients in the dataset.
+- Visualise the information for further analysis.
+
+
+Assumptions:
+- COVID-related conditions include any description containing the term “COVID”, regardless of letter case or wording (e.g: “COVID-19”, “Suspected COVID”, etc.).
+- Patients may appear multiple times across different encounters, so unique patient IDs are used to prevent duplication.
+
+```{r}
+patients <- patients %>%
+  mutate(
+    birthdate = as.Date(birthdate),
+    deathdate = ifelse(deathdate == "", NA, deathdate),
+    deathdate = as.Date(deathdate),
+    Age = as.numeric(difftime(Sys.Date(), birthdate, units = "days")) / 365.25
+    #divide by 365.25 as for each 4 years there is 1 leap year, so average days of a year should be 365.25
+  )
+head(patients)
+```
+
+
+```{r}
+# Identify COVID condition rows
+library(stringr)
+conditions <- conditions %>% mutate(description = as.character(description))
+
+covid_condition <- conditions %>% filter(!is.na(description) & str_detect(tolower(description),"covid"))
+
+print(nrow(covid_condition))
+length(unique(covid_condition$patient))
+#There is difference in the number of rows that contain the word "covid" and the number of unique patients because a patient can be diagnosed several times, might be “suspected COVID-19” first, then “COVID-19” later.
+#So if a patient had 3 COVID-related entries, that’s 3 rows but 1 unique patient.
+```
+
+
+```{r}
+# Get unique COVID patients and merge with patients table
+covid_patients_id <- unique(covid_condition$patient)
+covid_patients <- patients %>% filter(id %in% covid_patients_id)
+missing_in_patients <- setdiff(covid_patients_id, patients$id)
+nrow(covid_patients)
+glimpse(covid_patients)
+```
+
+
+```{r}
+covid_patients <- covid_patients %>% 
+  mutate(
+    age_group = cut(Age, breaks = c(-Inf, 18, 35, 50, Inf), labels= c("0-18", "19-35", "36-50", "51+"))
+    )
+table(covid_patients$age_group)
+# Find the distribution of covid patients per age group
+```
+
+
+```{r}
+county_counts <- covid_patients %>% group_by(county) %>% summarise(n_patients = n(), .groups = "drop") %>% arrange(desc(n_patients))
+knitr::kable(head(county_counts,15), caption = "Top 15 counties by unique COVID patients")
+
+```
+
+
+```{r}
+top_n <- 15
+top_counties <- county_counts%>% slice_head(n=top_n)
+library(ggplot2)
+p_county <- ggplot(top_counties, aes(x = reorder(county, n_patients), y = n_patients)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = paste0("Top ", top_n, " counties by number of unique COVID patients"),
+       x = "County", y = "Number of COVID patients") +
+  theme_minimal()
+
+print(p_county)
+```
+
+Implication:
+Middlesex County has by far the largest number of cases, followed by Worcester, Suffolk, and Essex Counties. This suggests that COVID-19 cases were concentrated in major population centers, possibly due to higher population density and healthcare accessibility in these regions. Additionally, these areas may have greater economic activity and mobility, which could facilitate faster transmission. The lower numbers in smaller counties like Dukes and Nantucket might reflect both lower population density and more effective containment or reduced exposure opportunities.
+
+```{r}
+p_age_group <- ggplot(covid_patients, aes(x = age_group)) +
+  geom_bar() +
+  labs(title = "COVID patients by age group", x = "Age group", y = "Number of patients") +
+  theme_minimal()
+
+print(p_age_group)
+```
+Interpretation:
+This bar chart reveals that the 51+ age group had the highest number of COVID-19 patients, followed by adults aged 19–35 and 36–50. This aligns with expectations that older individuals are more vulnerable to infection or are more likely to be tested and diagnosed due to higher health risk awareness. Age group 19-35 is the essential workers running the economics, so communication, trade and travel cannot be avoided, which are key factors that lead to COVID infection. The most protected age group 0-18 is under regulation and surveillance from adults, resulting in the least COVID case recorded among the four.
+
+
+Question 2: Analysis of Common Conditions Related to COVID-19 Patients
+
+Explanation of the task:
+This task aims to identify the most common conditions among patients who have contracted or are suspected to have contracted COVID-19. 
+
+The analysis will:
+1. Filter all patients diagnosed with conditions that contain the keyword “COVID”.
+2. Exclude COVID-related diagnoses to find other co-occurring conditions (symptoms or illnesses).
+3. Determine the top 10 most common conditions other than COVID among these patients.
+4. Compare these top conditions between male and female patients using tables.
+
+Assumptions:
+- COVID patients are defined as any record in `conditions` where `description` contains “COVID”.
+- Some patients may have multiple encounters, so we use distinct `Patient` IDs to avoid double counting.
+
+```{r}
+#Filter all the symptoms (other than covid) of patients
+non_covid_conditions <- conditions %>% filter(patient %in% covid_patients_id) %>% filter(!str_detect(tolower(description), "covid"))
+nrow(non_covid_conditions)
+```
+
+
+```{r}
+#join gender into conditions
+non_covid_with_gender <- non_covid_conditions %>%
+  left_join(patients %>% select(id, gender), by = c("patient" ="id"))
+table(non_covid_with_gender$gender)
+```
+
+```{r}
+# Find the frequency of the appeared conditions
+top_conditions_all <- non_covid_with_gender %>% group_by(description) %>% summarise(count = n(), .groups = "drop") %>% arrange(desc(count))
+
+knitr::kable(head(top_conditions_all, 10), caption = "Top 10 most common non-COVID conditions (all patients)")
+```
+COVID-19 patients most frequently showed fever, cough, loss of taste, and fatigue, reflecting typical infection symptoms. Common coexisting conditions such as obesity, prediabetes, anemia, and hypertension suggest underlying metabolic issues are prevalent. Both acute and chronic health factors appear to influence illness severity.
+
+```{r}
+#Find the conditions that most frequently appeared for each gender 
+top_conditions_gender <- non_covid_with_gender %>%
+  group_by(gender, description) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(gender, desc(count))
+
+#Take top 10 conditions for male and female
+top_male <- top_conditions_gender %>%
+  filter(gender == "M") %>%
+  slice_max(order_by = count, n = 10)
+
+top_female <- top_conditions_gender %>%
+  filter(gender == "F") %>%
+  slice_max(order_by = count, n = 10)
+
+knitr::kable(top_male, caption = "Top 10 Non-COVID Conditions (Male Patients)")
+knitr::kable(top_female, caption = "Top 10 Non-COVID Conditions (Female Patients)")
+```
+
+
+```{r}
+# Check if there are unique conditions
+length(unique(non_covid_with_gender$description))
+
+```
+There are still 172 unique symptoms recorded among COVID-19 patients, indicating diversity of co-occuring health conditions beyond the main infection.  
+
+
+```{r}
+#Visualization to compare how frequent conditions appeared by genders
+ggplot(top_conditions_gender %>% 
+         filter(description %in% c(top_female$description, top_male$description)),
+       aes(x = reorder(description, count), y = count, fill = gender)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(title = "Top Non-COVID Conditions by Gender",
+       x = "Condition", y = "Count") +
+  theme_minimal()
+
+```
+Both genders share similar top symptoms — fever, cough, loss of taste, and fatigue — which are classic COVID-related findings.
+Females appear to have slightly higher counts for reproductive and pregnancy-related conditions, while males show higher rates of chronic disorders like hypertension and anemia.
+This suggests gender differences in underlying health factors that may influence recovery and symptom severity.
+
+
+Question 3: Analysis of Hospitalisation Factors Among COVID-19 Patients
+
+Explanation of the task:
+- This task focuses on analysing the hospitalisation patterns of patients diagnosed with or suspected of having COVID-19.
+- The objective is to understand how factors such as age and gender influence the type of medical encounters experienced by these patients.
+
+The analysis will:
+- Identify all encounters related to patients who have any COVID-related conditions.
+- Categorise encounters by their class (e.g: ambulatory, emergency, inpatient, urgent care).
+- Examine hospitalisation trends across different age groups and genders.
+- Visualise the encounter distribution using bar charts to highlight potential demographic differences.
+
+Assumptions:
+- The encounterclass variable in the encounters dataset represents the type of healthcare service received.
+- Patient age is calculated from the birthdate column, and categorical age groups (e.g: 0–17, 18–39, 40–59, 60+) are used for comparison.
+- Each encounter record corresponds to one healthcare event; multiple encounters per patient are expected and included in the analysis.
+```{r}
+#Filter unique patients with covid diagnosed
+covid_patients_id <- unique(conditions %>%
+  filter(str_detect(tolower(description), "covid")) %>%
+  pull(patient))
+```
+
+
+```{r}
+#Filter encounters belongs to covid cases
+covid_encounters <- encounters %>%
+  filter(patient %in% covid_patients_id)
+head(covid_encounters)
+```
+
+
+```{r}
+#Join patients table to add more information on each patient(gender, age, agegroup)
+covid_encounters <- covid_encounters %>%
+  left_join(patients %>% select(id, gender, birthdate), by = c ("patient" = "id")) %>%
+  mutate(
+    birthdate = as.Date(birthdate),
+    Age = as.numeric(difftime(Sys.Date(), birthdate, units = "days")) / 365.25,
+    AgeGroup = case_when(
+      Age < 18 ~ "0-17",
+      Age < 40 ~ "18-39",
+      Age < 60 ~ "40-59",
+      TRUE ~ "60+"
+    )
+  )
+head(covid_encounters)
+```
+
+```{r}
+#Count the frequency of encounter class per agegroup
+encounter_summary <- covid_encounters %>%
+  group_by(gender, AgeGroup, encounterclass) %>%
+  summarise(Count = n(), .groups = "drop")
+print(encounter_summary)
+```
+
+```{r}
+# Calculate hospitalisation rate (proportion of inpatient encounters)
+hospitalisation_rate <- covid_encounters %>%
+  group_by(source, gender, AgeGroup) %>%
+  summarise(
+    total_encounters = n(),
+    inpatient_encounters = sum(encounterclass == "inpatient"),
+    hospitalisation_rate = inpatient_encounters / total_encounters,
+    .groups = "drop"
+  )
+
+# View as table
+knitr::kable(hospitalisation_rate, caption = "Hospitalisation Rate by Age Group and Gender (PG1 vs PG2)")
+
+# Optional: visualise hospitalisation rate trends
+ggplot(hospitalisation_rate,
+       aes(x = AgeGroup, y = hospitalisation_rate, fill = gender)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~source) +
+  labs(
+    title = "Hospitalisation Rate by Age and Gender Across Datasets",
+    x = "Age Group", y = "Hospitalisation Rate",
+    fill = "Gender"
+  ) +
+  theme_minimal()
+
+```
+
+The 18–39 age group shows the highest hospitalisation rate in both PG1 and PG2, reaching around 5%–6%. Rates are lower in the 0–17 and 60+ groups, while 40–59 sits in the middle. This pattern may indicate that young adults were more likely to be hospitalised when infected, possibly due to occupational exposure or differing admission policies rather than severe disease.
+
+Male patients (M) consistently have higher hospitalisation rates than female patients (F) across most age groups in both datasets, indicating that males are slightly more prone to severe COVID-19 outcomes.
+
+The overall pattern is consistent between PG1 and PG2, the same age and gender differences appear in both. However, PG2 shows slightly higher overall rates.
+
+```{r}
+# Plot
+ggplot(encounter_summary, aes(x = AgeGroup, y = Count, fill = encounterclass)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~gender) +
+  labs(title = "Encounter Type Distribution by Age and Gender (COVID Patients)",
+       x = "Age Group", y = "Number of Encounters", fill = "Encounter Class") +
+  theme_minimal()
+
+```
+Both males and females show a sharp increase in ambulatory and wellness visits among the 60+ age group, indicating higher healthcare utilization among older patients.
+Younger groups (0–17, 18–39) have relatively fewer hospital encounters, consistent with generally milder symptoms.
+
+```{r}
+# Identify COVID-related patients in each dataset
+covid_patients_source <- conditions %>%
+  filter(str_detect(tolower(description), "covid")) %>%
+  distinct(source, patient)
+
+# Join with encounters + patient info
+covid_encounters <- encounters %>%
+  inner_join(covid_patients_source, by = c("source", "patient")) %>%
+  left_join(patients %>% select(id, gender, birthdate, source),
+            by = c("patient" = "id", "source")) %>%
+  mutate(
+    Age = as.numeric(difftime(Sys.Date(), as.Date(birthdate), units = "days")) / 365.25,
+    AgeGroup = case_when(
+      Age < 18 ~ "0-17",
+      Age < 40 ~ "18-39",
+      Age < 60 ~ "40-59",
+      TRUE ~ "60+"
+    )
+  )
+
+# Summarize encounter types by AgeGroup, Gender, and Dataset Source
+encounter_summary <- covid_encounters %>%
+  group_by(source, gender, AgeGroup, encounterclass) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Plot to compare PG1 vs PG2
+ggplot(encounter_summary,
+       aes(x = AgeGroup, y = Count, fill = encounterclass)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(gender ~ source) +
+  labs(
+    title = "Comparison of Encounter Type by Age, Gender, and Dataset Source",
+    x = "Age Group", y = "Number of Encounters",
+    fill = "Encounter Class"
+  ) +
+  theme_minimal()
+
+```
+When comparing between PG1 and PG2, the overall patterns remain similar — older adults dominate ambulatory and wellness encounters in both datasets. However, encounter volumes differ slightly, implying minor variations in data collection or population size. Thus, while trends are consistent, PG1 appears to have higher encounter counts overall, suggesting possible dataset size or demographic differences.
+
+
+Question 4: Analysis of Recovery Outcomes Among COVID-19 Patients
+
+Explanation of the task:
+This task investigates the recovery patterns of patients who have been diagnosed with or are suspected to have contracted COVID-19.
+The aim is to evaluate how demographic and temporal factors — such as age, gender, and illness duration — relate to patient recovery outcomes.
+
+The analysis will:
+-Identify all COVID-related records in the conditions dataset using the keyword “COVID”.
+-Determine recovery status based on whether a patient’s STOP date is recorded.
+-Calculate the illness duration for recovered patients (difference between start and stop dates).
+-Compare recovery patterns across gender and age groups using summary tables and visualisations (histogram and bar chart).
+
+Assumptions:
+
+-A patient is considered “Recovered” if the STOP field is filled, and “Not Recovered” if it is empty or missing.
+-Duration of illness is measured in days, computed as the difference between stop and start.
+-Missing or incomplete date fields (e.g: start or stop) are excluded from duration-based analysis.
+
+```{r}
+#Detect covid condition and name "Not Recovered" and "Recovered" to differentiate
+covid_conditions <- conditions %>%
+  filter(str_detect(tolower(description), "covid")) %>%
+  mutate(
+    recovered = ifelse(stop == "" | is.na(stop), "Not Recovered", "Recovered")
+  )
+```
+
+```{r}
+#Add more patients information
+covid_conditions <- covid_conditions %>% left_join(patients %>% select(id, gender, birthdate), by = c ("patient" = "id")) %>%
+  mutate(
+    birthdate = as.Date(birthdate),
+    start = as.Date(start),
+    stop = as.Date(stop),
+    Age = as.numeric(difftime(Sys.Date(), birthdate, units = "days")) / 365.25,
+    Duration = as.numeric(difftime(stop, start, units = "days"))
+  )
+```
+
+
+
+
+```{r}
+#Summary table
+recovery_summary <- covid_conditions %>%
+  group_by(recovered) %>%
+  summarise(
+    mean_age = mean(Age, na.rm = TRUE),
+    median_duration = median(Duration, na.rm = TRUE),
+    count = n()
+  )
+
+knitr::kable(recovery_summary, caption = "COVID Recovery Summary")
+
+```
+
+
+```{r}
+# Join with zip code and source
+covid_conditions <- covid_conditions %>%
+  left_join(patients %>% select(id, gender, birthdate, zip, source), 
+            by = c("patient" = "id"))
+
+head(covid_conditions)
+```
+
+
+
+```{r}
+recovery_summary_source <- covid_conditions %>%
+  group_by(source.x, recovered) %>%
+  summarise(
+    mean_age = mean(Age, na.rm = TRUE),
+    median_duration = median(Duration, na.rm = TRUE),
+    count = n(),
+    .groups = "drop"
+  )
+knitr::kable(recovery_summary_source, caption = "COVID Recovery Summary by Dataset")
+
+# Visual comparison
+ggplot(recovery_summary_source, aes(x = recovered, y = mean_age, fill = source.x)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Mean Age of COVID Patients by Recovery Status and Dataset",
+    x = "Recovery Status", y = "Mean Age"
+  ) +
+  theme_minimal()
+```
+The chart shows that patients who did not recover from COVID tend to have a higher mean age compared to those who recovered. This pattern is consistent across both data sources (PG1 and PG2), suggesting that older individuals are generally at greater risk of not recovering from the illness. The similarity between the two sources also indicates that the data is relatively consistent and reliable across different datasets.
+
+```{r}
+ggplot(
+  covid_conditions %>% filter(recovered == "Recovered", !is.na(Duration)),
+  aes(x = Duration, fill = recovered)
+) +
+  geom_histogram(binwidth = 8, color = "white") +
+  labs(
+    title = "Distribution of Illness Duration (Recovered Patients)",
+    x = "Duration (Days)",
+    y = "Number of Patients"
+  ) +
+  theme_minimal()
+
+```
+Most recovered patients experienced illness durations below 50 days, with a sharp decline after that point. A few extreme outliers (longer than 400 days) may represent prolonged hospital stays or data recording issues. Overall, the duration trend indicates that the majority of COVID recoveries occurred within a short to moderate period.
+
+```{r}
+#Gender vs Recovery
+gender_recovery <- covid_conditions %>%
+  group_by(gender.y, recovered) %>%
+  summarise(count = n(), .groups = "drop")
+
+ggplot(gender_recovery, aes(x = gender.y, y = count, fill = recovered)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Recovery Status by Gender",
+       x = "Gender", y = "Number of Patients", fill = "Recovery Status") +
+  theme_minimal()
+
+```
+
+Both genders show very high recovery counts (17579), with females slightly higher than males.
+Only a small proportion of patients (347) are categorized as “Not Recovered”, with a very high mean age (78.12228). This imply that the higher a person age, the lower chance that they recovered from COVID. Overall, the graph and statistic suggesting effective treatment and recovery rates across both groups.
