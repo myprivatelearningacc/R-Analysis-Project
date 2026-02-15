@@ -5,14 +5,13 @@ Nguyen Khanh Ngoc
 
 Project Overview
 
-This project performs exploratory data analysis and patient-level investigation using healthcare datasets from two different sources (PG1 and PG2). The primary objective is to integrate, clean, and analyze patient medical records to identify COVID-19 cases and generate structured insights from the combined data.
+This project performs exploratory data analysis and patient-level investigation using healthcare datasets from two different sources (PG1 and PG2).
+
+The primary objective is to integrate, clean, and analyze patient medical records to identify COVID-19 cases and generate structured insights from the combined data.
 
 The entire workflow is implemented in R using an R Markdown (.Rmd) file to ensure reproducibility and clarity.
 
 Objectives
-
-This project focuses on the following:
-
 Data Integration
 
 Import six datasets (patients, encounters, and conditions from PG1 and PG2)
@@ -47,64 +46,95 @@ Examine condition and encounter distributions
 
 Generate visualizations using ggplot2
 
-Dataset overview: 
-patients: Patient demographic data:
-– id – the unique identifier of the patient.
-– BirthDate – The date the patient was born.
-– DeathDate – The date the patient died. An empty field indicates the patient is still alive.
-– Marital – The patient’s marital status. M - Married and S - Single.
-– Race – Description of the patient’s primary race.
-– Gender – Gender. M is male, and F is female.
-– City – The city of the patient’s current address.
-– State – The state of the patient’s current address.
-– County – The county of the patient’s current address.
-2
+Dataset Overview
+1. Patients Dataset
 
-– Zip – The postal code for the patient.
-Encounters: Patient encounter data.
-– id – the unique identifier of the encounter
-– Start – The date and time the encounter started.
-– stop – The date and time the encounter concluded.
-– Patient – The patient ID for the patient who went to health services
-– EncounterClass –The type of encounter, such as, ambulatory, emergency, inpatient, wellness,
-or urgent care.
-– Code – The Encounter code using the Health Standard coding of SNOMED-CT (More info at
-https://www.snomed.org/).
-– Description – Description of the type of encounter.
-– Base Encounter Cost – The base cost of the encounter, not including any line item costs
-related to medications, immunisations, procedures and or other services.
-– Total Claim Cost – The total cost of the encounter, including all line items.
-– Payer Coverage – The amount of cost the Payer covers.
-– ReasonCode – The Diagnosis code from SNOMED-CT, if this encounter targeted a specific
-condition.
-– ReasonDescription – Description of the reason code.
-conditions: Patient conditions or diagnoses.
-– Start – The date the condition was diagnosed.
-– Stop – The date the condition resolved, if applicable.
-– Patient – Patient ID for the diagnosed patient.
-– Encounter – Encounter ID to map the encounter details for this patient.
-– Code – Diagnosis code from SNOMED-CT.
-– Description – The description of the diagnosis/condition.
+Patient demographic data.
+
+id — Unique identifier of the patient
+
+BirthDate — Date the patient was born
+
+DeathDate — Date the patient died (empty indicates patient is still alive)
+
+Marital — Marital status (M = Married, S = Single)
+
+Race — Description of the patient’s primary race
+
+Gender — Gender (M = Male, F = Female)
+
+City — City of the patient’s current address
+
+State — State of the patient’s current address
+
+County — County of the patient’s current address
+
+Zip — Postal code
+
+2. Encounters Dataset
+
+Patient encounter data.
+
+id — Unique identifier of the encounter
+
+Start — Date and time the encounter started
+
+Stop — Date and time the encounter concluded
+
+Patient — Patient ID
+
+EncounterClass — Type of encounter (ambulatory, emergency, inpatient, wellness, urgent care)
+
+Code — Encounter code using SNOMED-CT
+
+Description — Description of the encounter type
+
+Base Encounter Cost — Base cost excluding additional services
+
+Total Claim Cost — Total cost including all services
+
+Payer Coverage — Amount covered by payer
+
+ReasonCode — Diagnosis code from SNOMED-CT (if applicable)
+
+ReasonDescription — Description of the diagnosis
+
+3. Conditions Dataset
+
+Patient diagnoses or conditions.
+
+Start — Date the condition was diagnosed
+
+Stop — Date the condition resolved (if applicable)
+
+Patient — Patient ID
+
+Encounter — Encounter ID linked to this diagnosis
+
+Code — Diagnosis code from SNOMED-CT
+
+Description — Description of the diagnosis/condition
 
 Technologies and Libraries
 
-The project is implemented in R and uses the following libraries:
+This project is implemented in R and uses the following libraries:
 
-dplyr — data manipulation
+dplyr — Data manipulation
 
-stringr — string processing
+stringr — String processing
 
-lubridate — date handling
+lubridate — Date handling
 
-ggplot2 — data visualization
+ggplot2 — Data visualization
 
-knitr — report generation
+knitr — Report generation
 
 Data Processing Workflow
 1. Data Import and Merging
 
 Each dataset is imported separately and assigned a source indicator (PG1 or PG2).
-The datasets are then combined using row binding to create three unified tables:
+
+The datasets are combined using row binding to create three unified tables:
 
 patients
 
@@ -120,7 +150,7 @@ Date fields are converted to Date objects
 
 Age is calculated using:
 
-Age = as.numeric(difftime(Sys.Date(), birthdate, units = "days")) / 365.25
+Age <- as.numeric(difftime(Sys.Date(), birthdate, units = "days")) / 365.25
 
 
 The factor 365.25 accounts for leap years.
@@ -133,8 +163,8 @@ Distinct patient IDs are extracted to ensure each patient is counted only once.
 
 Assumptions
 
-Any condition containing the string "COVID" qualifies as COVID-related.
+Any condition containing the string "COVID" qualifies as COVID-related
 
-Patients may have multiple encounters, so analysis is performed at the patient level using distinct IDs.
+Patients may have multiple encounters; analysis is performed at the patient level using distinct IDs
 
-Empty death dates are treated as missing values (NA).
+Empty death dates are treated as missing values (NA)
